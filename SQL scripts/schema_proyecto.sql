@@ -230,6 +230,42 @@ INSERT INTO TBL_ROLES
 VALUES ('REPON','Reponedor');
 
 -- FUNCIONES
+/* Funci[on que permite extraer de la base de datos los productos que en posean una cantidad igual o menor a 10, esto con el objetivo de que los administradores sepan
+cuando hacer un encargo de nuevos productos*/
+create or replace NONEDITIONABLE FUNCTION ProductosMenorA10 RETURN SYS_REFCURSOR IS
+    productos_cursor SYS_REFCURSOR;
+BEGIN
+    OPEN productos_cursor FOR
+        SELECT ID_PRODUCTO, DESCRIPCION, PRECIO, PROOVEDOR, CANTIDAD
+        FROM TBL_PRODUCTOS
+        WHERE CANTIDAD < 10;
+
+    RETURN productos_cursor;
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error al intentar obtener los productos: ' || SQLERRM);
+        RETURN NULL;
+END ProductosMenorA10;
+
+/* Funcion que permite validar cual es la factura mas alta del mes con el objetivo que la tienda premie al cliente que mas les compra */
+create or replace NONEDITIONABLE FUNCTION ValidarMontoMasAltoCliente RETURN SYS_REFCURSOR IS
+    factura_cursor SYS_REFCURSOR;
+BEGIN
+    OPEN factura_cursor FOR
+        SELECT e.id_cliente, e.total
+        FROM TBL_ENCABEZADO_FACTURA e
+        WHERE e.total = (SELECT MAX(total) FROM TBL_ENCABEZADO_FACTURA);
+
+    RETURN factura_cursor;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('No se encontraron facturas en la base de datos.');
+        RETURN NULL;
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error al intentar validar el monto más alto: ' || SQLERRM);
+        RETURN NULL;
+END ValidarMontoMasAltoCliente;
+
 /* GENERAR CODIGO EMPLEADO */
 CREATE OR REPLACE FUNCTION FUN_CODIGO_EMPLEADO RETURN VARCHAR2 IS
     NUEVO_CODIGO VARCHAR2(6);
@@ -255,6 +291,93 @@ END;
 /
 
 -- PROCESOS ALMACENADOS
+/* Procedimiento para registrar un producto*/
+create or replace NONEDITIONABLE PROCEDURE RegistrarProducto(
+    P_ID_PRODUCTO IN VARCHAR2,
+    p_DESCRIPCION IN VARCHAR2,
+    p_PRECIO IN NUMBER,
+    P_PROOVEDOR IN VARCHAR2,
+    P_FECHA_INGRESO IN DATE,
+    P_CANTIDAD IN NUMBER
+)
+IS
+BEGIN
+    INSERT INTO TBL_PRODUCTOS (ID_PRODUCTO, DESCRIPCION, PRECIO, PROOVEDOR, FECHA_INGRESO, CANTIDAD)
+    VALUES (P_ID_PRODUCTO, p_DESCRIPCION, p_PRECIO,P_PROOVEDOR,P_FECHA_INGRESO,P_CANTIDAD);
+
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Producto registrado exitosamente.');
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error al intentar registrar el producto: ' || SQLERRM);
+END RegistrarProducto;
+
+/* Procedimiento que disminuye la cantidad de productos en compras utilizando id y cantidad como parametros de entrada */
+create or replace NONEDITIONABLE PROCEDURE DisminuirCantidadProducto(
+    p_id_producto IN VARCHAR2,
+    p_cantidad_comprada IN NUMBER
+)
+IS
+    cantidad_actual NUMBER;
+BEGIN
+    SELECT cantidad
+    INTO cantidad_actual
+    FROM TBL_PRODUCTOS
+    WHERE id_producto = p_id_producto;
+
+    IF cantidad_actual >= p_cantidad_comprada THEN
+        UPDATE TBL_PRODUCTOS
+        SET cantidad = cantidad_actual - p_cantidad_comprada
+        WHERE id_producto = p_id_producto;
+
+        COMMIT;
+        DBMS_OUTPUT.PUT_LINE('Cantidad de producto actualizada exitosamente.');
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('No hay suficiente cantidad del producto en stock.');
+    END IF;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('No se encontró el producto con el ID proporcionado.');
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error al intentar actualizar la cantidad del producto: ' || SQLERRM);
+END DisminuirCantidadProducto;
+
+/* Consultar productos */
+create or replace NONEDITIONABLE PROCEDURE ConsultarProductos
+IS
+    CURSOR productos_cursor IS
+        SELECT ID_PRODUCTO, DESCRIPCION, PRECIO, PROOVEDOR, CANTIDAD
+        FROM TBL_PRODUCTOS;
+BEGIN
+    FOR producto IN productos_cursor LOOP
+        DBMS_OUTPUT.PUT_LINE('ID: ' || producto.ID_PRODUCTO ||', Descripción: ' || producto.descripcion || ', Precio: ' || producto.precio ||',  Cantidad: ' || producto.cantidad);
+    END LOOP;
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error al intentar consultar los productos: ' || SQLERRM);
+END ConsultarProductos;
+	
+/* AGREGAR Proveedor */
+create or replace NONEDITIONABLE PROCEDURE AgregarProveedor(
+    p_ID_PROVEEDOR IN VARCHAR2,
+    p_DESCRIPCION IN VARCHAR2,
+    p_FECHA_INGRESO IN DATE
+)
+IS
+BEGIN
+    INSERT INTO TBL_PROOVEDORES (ID_PROOVEDOR, DESCRIPCION, FECHA_INGRESO)
+    VALUES (p_ID_PROVEEDOR, p_DESCRIPCION, p_FECHA_INGRESO);
+
+    COMMIT;
+    DBMS_OUTPUT.PUT_LINE('Proveedor agregado exitosamente.');
+EXCEPTION
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error al intentar agregar el proveedor: ' || SQLERRM);
+END AgregarProveedor;
+
 /* AGREGAR CLIENTE */
 CREATE OR REPLACE PROCEDURE SP_AGREGAR_CLIENTE (
     CEDULA IN VARCHAR2,
